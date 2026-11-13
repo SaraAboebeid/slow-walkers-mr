@@ -4,6 +4,18 @@ Written against branch `dev`. Three files are copied in; five existing files get
 a small addition each. Nothing is removed and nothing existing is rewritten, so
 the change is additive and easy to back out.
 
+**If you would rather not do it by hand,** `integration.patch` beside this file
+is the same set of edits as a diff, with paths already at repository root:
+
+```
+git apply --check integration.patch   # see whether it still fits
+git apply integration.patch
+```
+
+It was taken against the MR Studio tree as it stood in October 2026, so if those
+files have moved on, a hunk may be rejected — in that case fall back to the
+steps below, which describe what each edit is for rather than where it sat.
+
 ## 1. Copy the files
 
 Keep the paths as they are here — `slow-walkers.js` fetches its data by relative

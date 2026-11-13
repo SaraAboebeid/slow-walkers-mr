@@ -1,0 +1,156 @@
+﻿diff --git a/README.md b/README.md
+index ea556e0..3f6fc56 100644
+--- a/README.md
++++ b/README.md
+@@ -33,6 +33,12 @@ An animated urban scene showing pedestrians, cars, buses, bicycles, and taxis mo
+ 
+ Real-time public transport overlay using the Västtrafik API. Displays live positions of buses, trams, trains, and ferries with smooth interpolated movement and trailing paths. Vehicle types are colour-coded and can be filtered by transport mode.
+ 
++### 🚶 Slow Walkers: Time Lost
++
++How many minutes slow walkers (Västtrafik's "slow" 4.235 km/h, typical of elderly passengers) lose when they miss a public-transport connection that medium-speed walkers (4.8 km/h) make. Computed with r5py on the Västtrafik GTFS timetable for weekday departures between 06:00 and 22:00, and exported to `media/slow-walkers/slow-walkers.geojson` by the separate `slow_walkers` project (`export_mr_layer.py`).
++
++Cells are 50 m around Chalmers (the table's calibrated view) and 200 m across the rest of Gothenburg, so the layer works on the campus model and zoomed out to the whole city. The controller has a time-of-day slider (or the all-day average), a play button that steps through the day, and a Chalmers / Gothenburg view switch. Cells grow in on activation, as in the original animation.
++
+ ### 🌬️ CFD Wind Simulation
+ 
+ Real-time Lattice Boltzmann computational fluid dynamics simulation showing wind flow patterns around buildings. The simulation computes fluid dynamics on the fly and visualises velocity fields with colour-coded flow lines. Wind audio plays whilst the simulation is active.
+@@ -171,6 +177,7 @@ python -m http.server 8000
+ │   ├── street-glow-animation.js # Animated street network paths
+ │   ├── street-life.js     # Urban activity simulation
+ │   ├── sun-study.js       # 3D shadow analysis
++│   ├── slow-walkers.js    # Time lost by slow walkers missing connections
+ │   └── trafik.js          # Västtrafik live transit overlay
+ ├── media/                 # Data files and assets
+ │   ├── building-footprints.geojson
+diff --git a/animations/street-life.js b/animations/street-life.js
+index c13df28..6acc441 100644
+--- a/animations/street-life.js
++++ b/animations/street-life.js
+@@ -1535,7 +1535,9 @@ function isAnyVisualizationActive() {
+     // here, so cars and live transit kept running underneath it - moving dots
+     // on the same streets as the moving flow lines, which is the one animation
+     // that layer cannot afford to be confused with.
+-    'ecom-energy-btn'
++    'ecom-energy-btn',
++    // Slow walkers: its delay cells sit under this canvas on the map
++    'slow-walkers-btn'
+   ];
+   
+   for (const id of activeButtons) {
+diff --git a/controller.html b/controller.html
+index 94b22b1..faac9a0 100644
+--- a/controller.html
++++ b/controller.html
+@@ -939,6 +939,9 @@
+             <button class="control-btn animation-btn" data-action="click" data-target="isovist-btn" title="Interactive Isovist">
+                 <span class="material-icons">visibility</span>
+             </button>
++            <button class="control-btn animation-btn" data-action="click" data-target="slow-walkers-btn" title="Slow Walkers: Time Lost">
++                <span class="material-icons">elderly</span>
++            </button>
+             <button class="control-btn animation-btn" data-action="click" data-target="bird-sounds-btn" title="Bird Sounds">
+                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width: 24px; height: 24px;">
+                     <path d="M21 5c-1.1 0.9-2.3 1.5-3.6 1.7 1.3-0.8 2.3-2 2.7-3.5-1.2 0.7-2.5 1.2-3.9 1.5-1.1-1.2-2.7-1.9-4.5-1.9-3.4 0-6.1 2.7-6.1 6.1 0 0.5 0.1 0.9 0.2 1.4-5.1-0.3-9.6-2.7-12.6-6.4-0.5 0.9-0.8 2-0.8 3.2 0 2.1 1.1 4 2.7 5.1-1 0-2-0.3-2.8-0.8 0 0 0 0.1 0 0.1 0 3 2.1 5.5 4.9 6.1-0.5 0.1-1 0.2-1.6 0.2-0.4 0-0.8 0-1.2-0.1 0.8 2.4 3.1 4.2 5.8 4.2-2.1 1.6-4.7 2.6-7.6 2.6-0.5 0-1 0-1.5-0.1 2.7 1.7 5.9 2.7 9.4 2.7 11.3 0 17.4-9.3 17.4-17.4 0-0.3 0-0.5 0-0.8 1.2-0.9 2.2-1.9 3-3.2z"/>
+@@ -1092,6 +1095,7 @@
+     <script src="controller/slideshow-dashboard.js"></script>
+     <script src="controller/street-view.js"></script>
+     <script src="controller/fcc-demo-dashboard.js"></script>
++    <script src="controller/slow-walkers-ui.js"></script>
+     <script src="controller/auto-calibration.js"></script>
+     <script src="controller/tour.js"></script>
+     <script src="controller/bg-animation.js"></script>
+diff --git a/controller.js b/controller.js
+index 7576426..a04c5cb 100644
+--- a/controller.js
++++ b/controller.js
+@@ -63,7 +63,8 @@ const ANIMATION_BUTTONS = [
+     'bird-sounds-btn',
+     'campus-demo-btn',
+     'fcc-demo-btn',
+-    'street-view-btn'
++    'street-view-btn',
++    'slow-walkers-btn'
+ ];
+ 
+ // Function buttons are buttons that perform actions (not toggleable animations)
+@@ -1243,6 +1244,14 @@ function updateDashboard(targetId) {
+             sendIsovistControl('toggle_follow');
+         });
+ 
++    } else if (targetId === 'slow-walkers-btn') {
++        // Time slider, view switch and legend: controller/slow-walkers-ui.js
++        if (dashboardTitle) dashboardTitle.textContent = 'Slow Walkers';
++        // setSunStudyLayout(false) above resets the metadata band after
++        // updateMetadata filled it, so fill it again before the panel renders
++        updateMetadata(targetId);
++        window.slowWalkersUI.render(dashboardContent, legendContent);
++
+     } else if (targetId === 'grid-animation-btn') {
+         dashboardContent.innerHTML = `
+             <div class="dashboard-container">
+@@ -1745,6 +1754,14 @@ function updateMetadata(layerId) {
+             }
+             legend = '<p>See Legend panel for slide-specific legend.</p>';
+             break;
++        case 'slow-walkers-btn':
++            name = 'Slow Walkers: Time Lost';
++            desc = 'Minutes lost by slow walkers (4.235 km/h) who miss a public-transport '
++                 + 'connection that medium-speed walkers (4.8 km/h) make. r5py routing on the '
++                 + 'Västtrafik timetable; 100 m cells around Chalmers, 200 m across Gothenburg.';
++            // The dashboard renders the legend - see controller/slow-walkers-ui.js.
++            legend = '';
++            break;
+         case 'grid-animation-btn':
+             name = 'Grid Animation';
+             desc = 'Animated grid overlay effect.';
+diff --git a/index.html b/index.html
+index da81532..e47754b 100644
+--- a/index.html
++++ b/index.html
+@@ -91,6 +91,16 @@
+           </svg>
+         </button>
+ 
++        <button id="slow-walkers-btn" class="icon-btn" title="Slow Walkers: Time Lost">
++          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
++            <circle cx="11" cy="4" r="2"/>
++            <path d="M11 7 L10 13 L13 17 L13 22"/>
++            <path d="M10 13 L7 22"/>
++            <path d="M11 8 L7 11"/>
++            <path d="M11 8 L15 11 L17 22"/>
++          </svg>
++        </button>
++
+         <button id="fcc-demo-btn" class="icon-btn" title="FCC VR Demo">
+           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+             <rect x="2" y="4" width="20" height="14" rx="2"/>
+@@ -231,6 +241,7 @@
+     <script src="animations/street-life.js"></script>
+     <script src="animations/trafik.js"></script>
+     <script src="animations/campus-demo.js"></script>
++    <script src="animations/slow-walkers.js"></script>
+     <script type="module" src="animations/sun-study.js"></script>
+     <script src="ecom-palette.js"></script>
+     <script src="animations/ecom-energy.js"></script>
+diff --git a/style.css b/style.css
+index 3dc262b..ff19305 100644
+--- a/style.css
++++ b/style.css
+@@ -165,6 +165,16 @@ html, body {
+   background: #00d9c3;
+ }
+ 
++/* Slow walkers: the red of the layer's worst delay class */
++#slow-walkers-btn.active {
++  background: #b10026;
++  color: white;
++}
++
++#slow-walkers-btn.active:hover {
++  background: #8f001f;
++}
++
+ #map { 
+   position: fixed;
+   left: 60px;
