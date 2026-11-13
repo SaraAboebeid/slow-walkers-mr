@@ -1,0 +1,10 @@
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Nothing is built here - the layer is plain JavaScript served as-is - so there
+# is no dist/ or node_modules/ to ignore. The geojson IS committed: it is 3.4 MB,
+# the layer will not draw without it, and re-running the analysis needs r5py and
+# a GTFS feed that are not in this repository.
